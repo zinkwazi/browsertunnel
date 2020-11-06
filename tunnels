@@ -1,0 +1,107 @@
+#!/bin/bash
+# by Greg Lawler greg@zinkwazi.com
+# Initial release 2/20/2013
+
+##### Firefox Initial Configuration #####
+# - Open Firefox and enter about:profiles in the URL bar
+# - Create a new profile called "Tunnels"
+# - Open Firefox with the Tunnels profile:
+#    - Enter about:config -> accept -> find browser.ssl_override_behavior and change its value from 2 to 1.
+#    - Preferences -> General -> Network Settings -> Manual proxy configuration
+#        SOCKS HOST: localhost
+#        Port: 1080
+#        SOCKS v5: check
+
+ ##### Defaults
+ : ${config:=tunnels.conf}
+ : ${firefox_path:=/Applications/Firefox.app/Contents/MacOS/firefox}
+ : ${firefox_profile:=Tunnels}
+
+# Exit on error
+set -e
+
+######## Firefox Management ########
+
+function stop-all {
+	echo "Stopping all existing autossh sessions..."
+	ps -ef | grep autossh | grep 10[8-9][0-9] | grep -v grep | awk '{print $2}' | xargs kill -9
+	ps -ef | grep ssh | grep 10[8-9][0-9] | grep -v grep | awk '{print $2}' | xargs kill -9
+    ps -ef | grep -i firefox | grep -i Tunnels | grep -v grep | awk '{print $2}' | xargs kill
+    progress_bar
+	status
+	}
+
+function progress_bar {
+    echo -ne '#########                                 (25%)\r'
+    sleep 0.2
+    echo -ne '##################                        (50%)\r'
+    sleep 0.5
+    echo -ne '#############################             (75%)\r'
+    sleep 0.5
+    echo -ne '#######################################   (100%)\r'
+    echo -ne '\n'
+}
+
+function usage_message {
+    echo `basename $0`: ERROR: $* 1>&2
+    echo Usage: `basename $0` '{start|stop|restart|status}' 1>&2
+    exit 1
+}
+function show_locations() {
+  while IFS=',' read -r client_service ssh_server client_url; do
+      echo "$client_service" 
+  done < $config
+}
+
+function get_client() {
+  while IFS=',' read -r client_service ssh_server client_url; do
+    if [[ $client_service == $jump_host ]]
+    then
+        launch_firefox "$client_url"
+        echo "Launching Firefox..."
+    elsif
+        show_locations
+    fi
+  done < $config
+}
+
+function launch_firefox() {
+    # Kill old Firefox Tunnel profile instance before launching fresh
+    ps -ef | grep -i firefox | grep -i Tunnels | grep -v grep | awk '{print $2}' | xargs kill
+    sleep 2
+    $firefox_path -P $firefox_profile $client_url > /dev/null 2>&1 &
+}
+
+function status {
+	ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "Dynamic SSH tunnel running..." || echo "No dynamic SSH tunnels running..."
+	}
+
+function start_tunnel {
+    # Exit if existing autossh session detected
+    ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "SSH tunnel already running..." && exit 1
+	echo "Starting dynamic SSH tunnel for proxy..."
+    /usr/local/bin/autossh  -N -M 25000 -D 1080 -o ServerAliveInterval=3 -o ServerAliveCountMax=3 fs > /dev/null 2>&1 &
+    progress_bar
+	status
+    get_client
+}
+
+if [ $# -eq 0 ]; # If no input, show available locations
+then
+    echo Usage: `basename $0` '{location | stop | status}' 1>&2
+    echo ""
+    echo "Available locations in tunnels.conf:"
+    show_locations
+    exit 1
+else
+    jump_host=${1//[^a-zA-Z0-9]/} # Sanitize the input
+    if [ $jump_host == "stop" ]
+    then
+        stop-all
+    elif [ $jump_host == "status" ]
+    then
+        status
+    else
+        start_tunnel "$jump_host"
+    fi
+fi
