@@ -28,7 +28,7 @@ function stop-all {
 	ps -ef | grep ssh | grep 10[8-9][0-9] | grep -v grep | awk '{print $2}' | xargs kill -9
     ps -ef | grep -i firefox | grep -i Tunnels | grep -v grep | awk '{print $2}' | xargs kill
     progress_bar
-	status
+	show-status
 	}
 
 function progress_bar {
@@ -44,64 +44,65 @@ function progress_bar {
 
 function usage_message {
     echo `basename $0`: ERROR: $* 1>&2
-    echo Usage: `basename $0` '{start|stop|restart|status}' 1>&2
+    echo Usage: `basename $0` '{start|stop|status}' 1>&2
     exit 1
 }
 function show_locations() {
-  while IFS=',' read -r client_service ssh_server client_url; do
-      echo "$client_service" 
-  done < $config
+    echo Usage: `basename $0` '{location|stop|status}' 1>&2
+    echo ""
+    echo "Available locations in" $config
+    while IFS=',' read -r client_service ssh_server client_url; do
+        echo "$client_service" 
+    done < $config
 }
 
-function get_client() {
-  while IFS=',' read -r client_service ssh_server client_url; do
-    if [[ $client_service == $jump_host ]]
-    then
-        launch_firefox "$client_url"
-        echo "Launching Firefox..."
-    elsif
-        show_locations
-    fi
-  done < $config
-}
+function show-status {
+	ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "Dynamic SSH tunnel running..." || echo "No dynamic SSH tunnels running..."
+	}
 
 function launch_firefox() {
     # Kill old Firefox Tunnel profile instance before launching fresh
     ps -ef | grep -i firefox | grep -i Tunnels | grep -v grep | awk '{print $2}' | xargs kill
     sleep 2
+    # Start the Firefox profile
     $firefox_path -P $firefox_profile $client_url > /dev/null 2>&1 &
 }
-
-function status {
-	ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "Dynamic SSH tunnel running..." || echo "No dynamic SSH tunnels running..."
-	}
 
 function start_tunnel {
     # Exit if existing autossh session detected
     ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "SSH tunnel already running..." && exit 1
-	echo "Starting dynamic SSH tunnel for proxy..."
-    /usr/local/bin/autossh  -N -M 25000 -D 1080 -o ServerAliveInterval=3 -o ServerAliveCountMax=3 fs > /dev/null 2>&1 &
+	echo "Starting dynamic SSH tunnel $client_service..."
+    /usr/local/bin/autossh  -N -M 25000 -D 1080 -o ServerAliveInterval=3 -o ServerAliveCountMax=3  $ssh_server > /dev/null 2>&1 &
     progress_bar
-	status
-    get_client
+	show-status
+}
+
+function get_client() {
+    while IFS=',' read -r client_service ssh_server client_url || [ -n "$line" ]; do
+        if [[ $client_service == $jump_host ]]
+        then
+            start_tunnel "$ssh_server"
+            sleep 1
+            launch_firefox "$client_url"
+            echo "Launching Firefox..." $client_url
+            # exit 1
+        fi
+    done < $config
 }
 
 if [ $# -eq 0 ]; # If no input, show available locations
 then
-    echo Usage: `basename $0` '{location | stop | status}' 1>&2
-    echo ""
-    echo "Available locations in tunnels.conf:"
     show_locations
     exit 1
 else
-    jump_host=${1//[^a-zA-Z0-9]/} # Sanitize the input
+    jump_host=${1//[^a-zA-Z0-9]/} # Sanitize the input a bit
     if [ $jump_host == "stop" ]
     then
         stop-all
     elif [ $jump_host == "status" ]
     then
-        status
+        show-status
     else
-        start_tunnel "$jump_host"
+        get_client "$jump_host"
     fi
 fi
