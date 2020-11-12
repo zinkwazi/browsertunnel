@@ -9,7 +9,7 @@
 #    - Enter about:config -> accept -> find browser.ssl_override_behavior and change its value from 2 to 1.
 #    - Preferences -> General -> Network Settings -> Manual proxy configuration
 #        SOCKS HOST: localhost
-#        Port: 1080
+#        Port: 2080
 #        SOCKS v5: check
 
  ##### Defaults
@@ -23,7 +23,7 @@ set -e
 ######## Firefox Management ########
 
 function stop-all {
-	echo "Stopping all existing autossh sessions..."
+	echo "Stopping Firefox profile and autossh sessions..."
 	ps -ef | grep autossh | grep 10[8-9][0-9] | grep -v grep | awk '{print $2}' | xargs kill -9
 	ps -ef | grep ssh | grep 10[8-9][0-9] | grep -v grep | awk '{print $2}' | xargs kill -9
     ps -ef | grep -i firefox | grep -i Tunnels | grep -v grep | awk '{print $2}' | xargs kill
@@ -57,7 +57,7 @@ function show_locations() {
 }
 
 function show-status {
-	ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "Dynamic SSH tunnel running..." || echo "No dynamic SSH tunnels running..."
+	ps auxw | grep -v -e autossh -e grep | grep -q "D 2080" && echo "Dynamic SSH tunnel running..." || echo "No dynamic SSH tunnels running..."
 	}
 
 function launch_firefox() {
@@ -70,9 +70,9 @@ function launch_firefox() {
 
 function start_tunnel {
     # Exit if existing autossh session detected
-    ps auxw | grep -v -e autossh -e grep | grep -q "D 1080" && echo "SSH tunnel already running..." && exit 1
+    ps auxw | grep -v -e autossh -e grep | grep -q "D 2080" && echo "SSH tunnel already running..." && exit 1
 	echo "Starting dynamic SSH tunnel $client_service..."
-    /usr/local/bin/autossh  -N -M 25000 -D 1080 -o ServerAliveInterval=3 -o ServerAliveCountMax=3  $ssh_server > /dev/null 2>&1 &
+    /usr/local/bin/autossh  -N -M 25000 -D 2080 -o ServerAliveInterval=3 -o ServerAliveCountMax=3  $ssh_server > /dev/null 2>&1 &
     progress_bar
 	show-status
 }
